@@ -63,7 +63,7 @@ max_z_accel: 200
 # nur zur Kontrolle, dass diese Datei wirklich geladen wird
 [gcode_macro Z_NOISE_FIX_CHECK]
 gcode:
-    RESPOND MSG="z-noise-fix.cfg ist aktiv"
+    {action_respond_info("z-noise-fix.cfg ist aktiv")}
 ```
 
 Hinweise:
@@ -71,6 +71,9 @@ Hinweise:
 - Der einzelne `[printer]`-Eintrag genügt — die Sektion wird mit der aus `printer.cfg` zusammengeführt, `kinematics`, `max_velocity` usw. bleiben erhalten.
 - `max_z_velocity` **nicht** anfassen, sonst werden Z-Hops spürbar langsamer.
 - Alle `.cfg`-Dateien in `extended/klipper/` werden von der Paxx-Firmware automatisch eingebunden und bleiben über Neustarts erhalten. Das ist der vorgesehene Platz für eigene Tweaks — im Gegensatz zur `printer.cfg`.
+- Im Marker-Makro absichtlich `action_respond_info(...)` statt `RESPOND` oder `M118`: die beiden brauchen ein `[respond]`-Modul in der Config und würden sonst selbst einen Config-Fehler auslösen.
+
+Für die automatisierte Variante über die Moonraker-API (inkl. Rollback) siehe `claude-code-runbook-klack-fix.md`.
 
 ### Schritt 3: Speichern & neu starten
 
