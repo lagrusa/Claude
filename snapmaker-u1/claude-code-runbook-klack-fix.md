@@ -5,8 +5,10 @@ Hintergrund und Begründung: siehe `klack-geraeusch-fix.md` im selben Ordner.
 
 **Voraussetzung:** Diese Session muss im **selben LAN** wie der Drucker laufen (Cloud-Sessions können private IPs nicht erreichen). Zuerst am Touchscreen `Einstellungen → Wartung → Advanced Mode` aktivieren, sonst ist die Weboberfläche/API zu.
 
-**Abkürzung:** `apply-z-noise-fix.sh` im selben Ordner macht Schritt 1–7 in einem Durchlauf (inkl. Auto-Rollback bei Config-Fehler) und braucht nur `curl`:
-`bash apply-z-noise-fix.sh` bzw. `bash apply-z-noise-fix.sh --rollback`.
+**Abkürzung:** die Skripte im selben Ordner machen Schritt 1–7 in einem Durchlauf, inkl. Auto-Rollback bei Config-Fehler:
+
+- Linux/macOS/WSL/Git-Bash: `bash apply-z-noise-fix.sh` bzw. `bash apply-z-noise-fix.sh --rollback` (braucht nur `curl`)
+- **Windows PowerShell:** `powershell -ExecutionPolicy Bypass -File apply-z-noise-fix.ps1` bzw. `... -Rollback` (keine Zusatzsoftware, läuft mit dem mitgelieferten PowerShell 5.1)
 Das Runbook unten ist die manuelle Variante bzw. die Grundlage, wenn etwas abweicht.
 
 Alle Kommandos setzen `curl` und `jq` voraus. Ohne `jq`: `python3 -m json.tool` verwenden.
