@@ -11,6 +11,17 @@ Die Einstellungen sind **nicht** automatisch in der aktuellen Paxx-Firmware gese
 
 Punkt 1 ist der größere Hebel, Punkt 2 dämpft den restlichen Schlag.
 
+## Am Gerät bestätigt (2026-08-16)
+
+Teil 2 wurde per `apply-z-noise-fix.ps1` auf dem echten Drucker ausgeführt:
+
+- `max_z_accel` **vorher 500.0 → nachher 200.0** (500 ist also der Werkswert dieser Firmware, nicht der im Wiki angedeutete Extremwert)
+- `[printer]` in Zeile 106, extended-Include in Zeile 1337 → **Reihenfolge passt**, der Override in `extended/klipper/` greift auf dieser Paxx-Version
+- Marker-Makro `Z_NOISE_FIX_CHECK` nach dem Neustart geladen, Klipper-Status `ready`
+
+Damit ist der Klipper-Weg für diesen Drucker der bestätigte; die Änderung in `printer.cfg` ist nicht nötig.
+Zurücknehmen jederzeit mit `-Rollback` bzw. `--rollback`.
+
 ## Ursache
 
 Snapmaker beschreibt das Geräusch offiziell als Z-Achsen-Klopfen: Bei schnellen Richtungswechseln der Z-Achse (vor allem beim Z-Hop) erzeugt der Z-Motor eine kurze Gegenkraft, die über die Mechanik in den Kunststoff-Unterbau übertragen wird → metallisch-dumpfes „Klack". Snapmaker stuft das als normal ein (kein Defekt), nennt aber genau zwei Gegenmaßnahmen — die beiden oben.
