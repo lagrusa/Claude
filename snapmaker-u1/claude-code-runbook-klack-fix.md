@@ -5,6 +5,10 @@ Hintergrund und Begründung: siehe `klack-geraeusch-fix.md` im selben Ordner.
 
 **Voraussetzung:** Diese Session muss im **selben LAN** wie der Drucker laufen (Cloud-Sessions können private IPs nicht erreichen). Zuerst am Touchscreen `Einstellungen → Wartung → Advanced Mode` aktivieren, sonst ist die Weboberfläche/API zu.
 
+**Abkürzung:** `apply-z-noise-fix.sh` im selben Ordner macht Schritt 1–7 in einem Durchlauf (inkl. Auto-Rollback bei Config-Fehler) und braucht nur `curl`:
+`bash apply-z-noise-fix.sh` bzw. `bash apply-z-noise-fix.sh --rollback`.
+Das Runbook unten ist die manuelle Variante bzw. die Grundlage, wenn etwas abweicht.
+
 Alle Kommandos setzen `curl` und `jq` voraus. Ohne `jq`: `python3 -m json.tool` verwenden.
 Bei `401 Unauthorized`: API-Key aus Fluidd (`Settings → API keys`) holen und jedem Aufruf `-H "X-Api-Key: <KEY>"` mitgeben.
 
