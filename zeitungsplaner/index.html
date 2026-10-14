@@ -138,6 +138,22 @@
   .confirm { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; font-size: 12px; color: var(--danger); }
 
   #stage { grid-area: stage; overflow: auto; position: relative; }
+  #connect {
+    position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+  }
+  #connect .card {
+    max-width: 440px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px;
+  }
+  #connect h3 { margin: 0; font-size: 17px; text-wrap: balance; }
+  #connect p { margin: 0; color: var(--muted); }
+  #connect code { font-family: var(--font-num); font-size: 13px; color: var(--fg); background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+  #connect .err { color: var(--danger); font-size: 13px; }
+  #connect .err:empty { display: none; }
+  #connect .link { border: 0; background: none; padding: 0; color: var(--muted); text-decoration: underline; align-self: flex-start; font-size: 12px; }
+  .peers { font-size: 11px; color: var(--accent); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .peerwarn { font-size: 12px; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); color: var(--fg); border: 1px solid var(--accent); }
   #stage-inner { padding: 26px 30px 40px 58px; width: max-content; margin: 0 auto; }
   #colhead { position: relative; height: 18px; font-size: 11px; color: var(--muted); font-family: var(--font-num); }
   #colhead span { position: absolute; text-align: center; }
@@ -217,7 +233,7 @@
 </style>
 
 <header>
-  <h1>Seitenplaner <small>277,5 × 440 mm · 6 Sp.</small></h1>
+  <h1>Seitenplaner <small id="format">Berliner Format · 282,5 × 431 mm · 6 Sp.</small></h1>
   <button id="undo" type="button" title="Rückgängig (Strg+Z)" disabled>↶ Rückgängig</button>
   <label class="ctl" for="snap">Raster
     <select id="snap">
@@ -256,9 +272,27 @@
     <button id="delyes" type="button" class="danger">Löschen</button>
     <button id="delno" type="button">Abbrechen</button>
   </div>
+  <div id="folderbox" hidden>
+    <label for="myname">Dein Name (sehen die Kollegen)</label>
+    <input id="myname" type="text" autocomplete="off" placeholder="z. B. Anna">
+    <div class="hint" id="foldername"></div>
+    <div class="btns"><button id="changefolder" type="button">Ordner wechseln</button></div>
+  </div>
 </aside>
 
 <main id="stage">
+  <div id="connect" hidden>
+    <div class="card" role="dialog" aria-labelledby="connect-title">
+      <h3 id="connect-title">Gemeinsamen Ordner verbinden</h3>
+      <p id="connect-text"></p>
+      <div class="err" id="connect-err"></div>
+      <div class="btns" style="margin:0">
+        <button id="connect-go" type="button" class="primary">Ordner verbinden</button>
+        <button id="connect-pick" type="button">Anderen Ordner wählen</button>
+      </div>
+      <button id="connect-local" type="button" class="link">Ohne gemeinsamen Ordner arbeiten (nur in diesem Browser)</button>
+    </div>
+  </div>
   <div id="stage-inner">
     <div id="colhead"></div>
     <div id="pagewrap">
@@ -270,13 +304,14 @@
 
 <aside id="side">
   <div id="notice" class="notice"></div>
+  <div id="peerwarn" class="peerwarn" hidden></div>
 
   <section class="box">
     <h2>Belegung</h2>
     <div class="stats num">
       <span>Belegt</span><b id="st-used">0 spmm</b>
-      <span>Frei</span><b id="st-free">2.640 spmm</b>
-      <span>Seite gesamt</span><b>2.640 spmm</b>
+      <span>Frei</span><b id="st-free">2.586 spmm</b>
+      <span>Seite gesamt</span><b id="st-total">2.586 spmm</b>
     </div>
     <div class="bar" id="st-bar"><div style="width:0"></div></div>
     <div id="st-warn" class="warn"></div>
@@ -291,7 +326,7 @@
       </div>
       <div>
         <label for="n-h">Höhe (mm)</label>
-        <input id="n-h" type="number" min="1" max="440" step="0.5" value="50">
+        <input id="n-h" type="number" min="1" max="431" step="0.5" value="50">
       </div>
     </div>
     <label for="n-type">Art</label>
@@ -323,17 +358,17 @@
       </div>
       <div>
         <label for="e-x">Links (mm)</label>
-        <input id="e-x" type="number" min="0" max="277.5" step="0.5">
+        <input id="e-x" type="number" min="0" max="282.5" step="0.5">
       </div>
     </div>
     <div class="row">
       <div>
         <label for="e-y">Oben (mm)</label>
-        <input id="e-y" type="number" min="0" max="440" step="0.5">
+        <input id="e-y" type="number" min="0" max="431" step="0.5">
       </div>
       <div>
         <label for="e-h">Höhe (mm)</label>
-        <input id="e-h" type="number" min="1" max="440" step="0.5">
+        <input id="e-h" type="number" min="1" max="431" step="0.5">
       </div>
     </div>
     <label for="e-note">Notiz</label>
@@ -357,14 +392,15 @@
 <script>
 (() => {
   // --- Satzspiegel ---------------------------------------------------------
-  const PAGE_W = 277.5;            // mm
-  const PAGE_H = 440;              // mm
+  // Berliner Format
+  const PAGE_W = 282.5;            // mm
+  const PAGE_H = 431;              // mm
   const COLS = 6;
   const COL_W = 45;                // mm je Spalte
-  const GUTTER = 1.5;              // mm Zwischenschlag
-  const PITCH = COL_W + GUTTER;    // 46,5 mm
-  const PAGE_SPMM = COLS * PAGE_H; // 2640 spmm
-  const colsWidth = n => n * COL_W + (n - 1) * GUTTER; // 1=45 … 6=277,5
+  const GUTTER = 2.5;              // mm Zwischenschlag
+  const PITCH = COL_W + GUTTER;    // 47,5 mm
+  const PAGE_SPMM = COLS * PAGE_H; // 2586 spmm
+  const colsWidth = n => n * COL_W + (n - 1) * GUTTER; // 1=45, 2=92,5, 3=140, 4=187,5, 5=235, 6=282,5
   const colLeft = c => c * PITCH;
   const FINE = 0.5;                // mm, Schrittweite bei freier Platzierung (Alt)
   const isFree = b => Number.isFinite(b.x);
@@ -401,14 +437,18 @@
   let scale = 2;           // px pro mm
   let drag = null;
   let pendingSnapshot = null;
+  let dir = null;          // Datenordner auf dem Serverlaufwerk (Ordner-Modus)
+  let folderOk = true;
+  let peers = [];          // andere, die den Planer gerade geöffnet haben: [{name, page}]
   const history = [];      // [{id, before, key, t}]
   const dirty = new Set(); // Seiten mit noch nicht bestätigten eigenen Änderungen
   const inflight = new Set(), again = new Set(), timers = new Map();
 
   const pref = (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { return {}; } })();
   let currentId = pref.current || null;
+  let myName = typeof pref.name === 'string' ? pref.name : '';
   function savePref() {
-    try { localStorage.setItem(PREF_KEY, JSON.stringify({ current: currentId, snap: $('snap').value })); } catch (e) {}
+    try { localStorage.setItem(PREF_KEY, JSON.stringify({ current: currentId, snap: $('snap').value, name: myName })); } catch (e) {}
   }
   if (pref.snap) $('snap').value = pref.snap;
 
@@ -424,7 +464,7 @@
   }
   function persist(id, delay = 0) {
     if (mode === 'local') { saveLocal(); return; }
-    if (mode !== 'shared') return;
+    if (mode !== 'shared' && mode !== 'folder') return;
     dirty.add(id);
     clearTimeout(timers.get(id));
     if (delay) timers.set(id, setTimeout(() => flush(id), delay));
@@ -435,10 +475,15 @@
     if (inflight.has(id)) { again.add(id); return; }
     inflight.add(id);
     const p = pages.find(x => x.id === id);
-    const ref = db.collection(COLL).doc(id);
     try {
-      if (p) await ref.set(clone(bodyOf(p)));
-      else await ref.delete();
+      if (mode === 'folder') {
+        if (p) await writeFile(pageFile(id), bodyOf(p));
+        else await dir.removeEntry(pageFile(id)).catch(e => { if (e.name !== 'NotFoundError') throw e; });
+      } else {
+        const ref = db.collection(COLL).doc(id);
+        if (p) await ref.set(clone(bodyOf(p)));
+        else await ref.delete();
+      }
     } catch (e) {
       writeFailed(e);
     }
@@ -447,6 +492,11 @@
     if (!timers.has(id)) dirty.delete(id);
   }
   function writeFailed(e) {
+    if (mode === 'folder') {
+      if (e && e.name === 'NotAllowedError') { showConnect('Der Browser hat den Zugriff auf den Ordner zurückgenommen. Bitte erneut verbinden.'); return; }
+      notice('Eine Änderung konnte nicht im gemeinsamen Ordner gespeichert werden. Prüfe, ob das Laufwerk O: erreichbar ist; die Änderung wird beim nächsten Bearbeiten erneut gespeichert.');
+      return;
+    }
     const code = e && e.code;
     if (code === 'invalid_argument' || code === 'not_granted' || code === 'revoked') {
       canWrite = false;
@@ -590,14 +640,18 @@
     const txt = {
       loading: ['', 'Verbinde …', ''],
       shared: ['shared', 'Gemeinsam gespeichert', 'Alle mit dem Link sehen dieselbe Planung, Änderungen erscheinen live.'],
-      local: ['local', 'Nur in diesem Browser', 'Hier ist keine gemeinsame Ablage verfügbar. Änderungen bleiben in diesem Browser.'],
+      local: ['local', 'Nur in diesem Browser', 'Hier ist keine gemeinsame Ablage verbunden. Änderungen bleiben in diesem Browser.'],
+      'folder-wait': ['local', 'Ordner nicht verbunden', 'Verbinde den gemeinsamen Ordner, um mit den anderen zu planen.'],
+      folder: folderOk
+        ? ['shared', 'Gemeinsamer Ordner', 'Gespeichert im Ordner ' + (dir ? dir.name : '') + '. Änderungen der anderen erscheinen nach wenigen Sekunden.']
+        : ['local', 'Ordner nicht erreichbar', 'Der gemeinsame Ordner antwortet gerade nicht. Prüfe, ob das Laufwerk O: verbunden ist.'],
     }[mode];
     s.className = 'status ' + (mode === 'shared' && !canWrite ? 'readonly' : txt[0]);
     s.textContent = mode === 'shared' && !canWrite ? 'Nur ansehen' : txt[1];
     s.title = txt[2];
     $('undo').disabled = !history.length || !canWrite;
     for (const id of ['addpage', 'duppage', 'delpage', 'create', 'import', 'pagename'])
-      $(id).disabled = !canWrite || mode === 'loading' || (id !== 'addpage' && id !== 'import' && !page());
+      $(id).disabled = !canWrite || mode === 'loading' || mode === 'folder-wait' || (id !== 'addpage' && id !== 'import' && !page());
     for (const el of $('newbox').querySelectorAll('input, select')) el.disabled = !canWrite;
     for (const el of $('editbox').querySelectorAll('input, select, button')) el.disabled = !canWrite;
   }
@@ -611,15 +665,21 @@
     return `<svg width="${w}" height="${h.toFixed(1)}" viewBox="0 0 ${w} ${h.toFixed(1)}" aria-hidden="true">${r}</svg>`;
   }
 
+  function peerNames(pageId) {
+    return peers.filter(x => x.page === pageId).map(x => x.name).join(', ');
+  }
   function renderPageList() {
     const cur = page();
+    const others = cur ? peerNames(cur.id) : '';
+    $('peerwarn').hidden = !others;
+    $('peerwarn').textContent = others ? `Diese Seite ist gerade auch bei ${others} geöffnet. Sprecht euch ab: Wer zuletzt speichert, überschreibt die Änderungen des anderen.` : '';
     $('pagelist').innerHTML = pages.length ? pages.map(p => {
       const pct = Math.round(usedSpmm(p.blocks) / PAGE_SPMM * 100);
       return `<button type="button" class="page-item${cur && p.id === cur.id ? ' active' : ''}" data-id="${p.id}">
         ${miniSvg(p, 40)}
-        <span class="meta"><span class="name" style="display:block">${esc(p.name || 'Ohne Namen')}</span><span class="fill num" style="display:block">${pct} % · ${p.blocks.length} Fl.</span></span>
+        <span class="meta"><span class="name" style="display:block">${esc(p.name || 'Ohne Namen')}</span><span class="fill num" style="display:block">${pct} % · ${p.blocks.length} Fl.</span>${peerNames(p.id) ? `<span class="peers">✎ ${esc(peerNames(p.id))}</span>` : ''}</span>
       </button>`;
-    }).join('') : `<div class="hint" style="margin:0">${mode === 'loading' ? 'Lade Seiten …' : 'Noch keine Seiten. Lege mit „+ Seite“ die erste an.'}</div>`;
+    }).join('') : `<div class="hint" style="margin:0">${mode === 'loading' || mode === 'folder-wait' ? 'Lade Seiten …' : 'Noch keine Seiten. Lege mit „+ Seite“ die erste an.'}</div>`;
     if (document.activeElement !== $('pagename')) $('pagename').value = cur ? cur.name : '';
   }
 
@@ -634,7 +694,7 @@
       html += `<div class="col-guide" style="left:${colLeft(c) * scale}px;width:${COL_W * scale}px"></div>`;
 
     if (!cur) {
-      html += `<div class="empty-page">${mode === 'loading' ? 'Lade Planung …' : 'Noch keine Seite angelegt.<br>Links auf „+ Seite“ klicken.'}</div>`;
+      html += `<div class="empty-page">${mode === 'loading' || mode === 'folder-wait' ? 'Lade Planung …' : 'Noch keine Seite angelegt.<br>Links auf „+ Seite“ klicken.'}</div>`;
     } else {
       const bad = overlappingIds(cur.blocks);
       if (!cur.blocks.length) html += `<div class="empty-page">Leere Seite.<br>Rechts unter „Neue Fläche“ Spalten und Höhe wählen.</div>`;
@@ -783,6 +843,7 @@
     hideConfirm();
     savePref();
     render();
+    if (mode === 'folder') heartbeat();
   }
   $('pagelist').onclick = e => {
     const it = e.target.closest('.page-item');
@@ -993,8 +1054,7 @@
   };
 
   // --- Start ---------------------------------------------------------------
-  function startLocal() {
-    mode = 'local';
+  function readLocal() {
     let list = null;
     try { list = JSON.parse(localStorage.getItem(LOCAL_KEY)); } catch (e) {}
     if (!Array.isArray(list)) {
@@ -1004,11 +1064,186 @@
         if (old && Array.isArray(old.pages)) list = old.pages.map((p, i) => ({ ...p, order: i + 1 }));
       } catch (e) {}
     }
-    pages = Array.isArray(list) ? list.map(p => normalize(p.id || uid(), p)) : [];
+    return Array.isArray(list) ? list.map(p => normalize(p.id || uid(), p)) : [];
+  }
+  function startLocal() {
+    mode = 'local';
+    $('connect').hidden = true;
+    $('folderbox').hidden = true;
+    pages = readLocal();
     if (!pages.length) pages = [{ id: uid(), name: 'Seite 1', order: 1, blocks: [] }];
     sortPages();
     if (!page()) currentId = pages[0].id;
     render();
+  }
+
+  // --- Gemeinsamer Ordner auf dem Serverlaufwerk (Edge/Chrome) -------------
+  // Jede Zeitungsseite ist eine Datei seite-<id>.json im Unterordner „Seitenplanung“.
+  // Alle paar Sekunden wird der Ordner abgeglichen; aktiv-<id>.json zeigt, wer welche Seite offen hat.
+  const DATA_DIR = 'Seitenplanung';
+  const POLL_MS = 3000, BEAT_MS = 10000, PEER_MAX_AGE = 45000;
+  const clientId = uid();
+  const pageFile = id => `seite-${id}.json`;
+  const fileSeen = new Map();   // Dateiname -> {lm, size, page}
+  let rootHandle = null, polling = false, loops = [];
+
+  function kv(key, value) {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('seitenplaner', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('kv');
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => {
+        const write = value !== undefined;
+        const st = req.result.transaction('kv', write ? 'readwrite' : 'readonly').objectStore('kv');
+        const q = write ? st.put(value, key) : st.get(key);
+        q.onsuccess = () => resolve(q.result);
+        q.onerror = () => reject(q.error);
+      };
+    });
+  }
+  async function writeFile(name, obj) {
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(obj));
+    await w.close();
+  }
+
+  async function poll(force) {
+    if (polling || mode !== 'folder') return;
+    polling = true;
+    try {
+      const seen = new Set(), ps = [], now = Date.now();
+      let changed = !!force;
+      for await (const [name, h] of dir.entries()) {
+        if (h.kind !== 'file') continue;
+        let m = /^seite-([A-Za-z0-9_-]+)\.json$/.exec(name);
+        if (m) {
+          seen.add(name);
+          const f = await h.getFile();
+          const prev = fileSeen.get(name);
+          if (prev && prev.lm === f.lastModified && prev.size === f.size) continue;
+          try {
+            fileSeen.set(name, { lm: f.lastModified, size: f.size, page: normalize(m[1], JSON.parse(await f.text())) });
+            changed = true;
+          } catch (e) { /* Datei wird gerade geschrieben: beim nächsten Durchlauf */ }
+          continue;
+        }
+        m = /^aktiv-([A-Za-z0-9_-]+)\.json$/.exec(name);
+        if (m && m[1] !== clientId) {
+          const f = await h.getFile();
+          const age = now - f.lastModified;
+          if (age > 86400000) { dir.removeEntry(name).catch(() => {}); continue; }
+          if (age > PEER_MAX_AGE) continue;
+          try {
+            const d = JSON.parse(await f.text());
+            ps.push({ name: String(d.name || '').trim() || 'Jemand', page: String(d.page || '') });
+          } catch (e) {}
+        }
+      }
+      for (const name of [...fileSeen.keys()]) if (!seen.has(name)) { fileSeen.delete(name); changed = true; }
+      ps.sort((a, b) => (a.name + a.page).localeCompare(b.name + b.page));
+      const peersChanged = JSON.stringify(ps) !== JSON.stringify(peers);
+      peers = ps;
+      const wasOk = folderOk;
+      folderOk = true;
+      if (!wasOk) notice('');
+      if (changed) {
+        const list = [...fileSeen.values()].map(v => v.page);
+        if (drag) pendingSnapshot = list; else applyIncoming(list);
+      } else if (peersChanged || !wasOk) render();
+    } catch (e) {
+      if (e && e.name === 'NotAllowedError') showConnect('Der Browser hat den Zugriff auf den Ordner zurückgenommen. Bitte erneut verbinden.');
+      else if (folderOk) { folderOk = false; render(); }
+    }
+    polling = false;
+  }
+
+  async function heartbeat() {
+    if (mode !== 'folder') return;
+    try { await writeFile(`aktiv-${clientId}.json`, { name: myName, page: currentId || '' }); } catch (e) {}
+  }
+
+  async function connect(root) {
+    $('connect-err').textContent = '';
+    try {
+      dir = root.name === DATA_DIR ? root : await root.getDirectoryHandle(DATA_DIR, { create: true });
+      rootHandle = root;
+      try { await kv('ordner', root); } catch (e) {}
+    } catch (e) {
+      showConnect('In diesem Ordner darf der Planer nicht speichern. Wähle einen Ordner, in dem du schreiben darfst, zum Beispiel O:\\Gemeinsames.');
+      return;
+    }
+    mode = 'folder';
+    folderOk = true;
+    $('connect').hidden = true;
+    $('folderbox').hidden = false;
+    $('foldername').textContent = 'Planung liegt im Ordner „' + (dir === root ? root.name : root.name + '\\' + DATA_DIR) + '“.';
+    fileSeen.clear();
+    pages = [];
+    dirty.clear();
+    history.length = 0;
+    await poll(true);
+    if (mode === 'folder' && !pages.length) {
+      // leerer Ordner: bisherige Planung aus diesem Browser übernehmen, sonst mit Seite 1 beginnen
+      pages = readLocal();
+      if (!pages.length) pages = [{ id: uid(), name: 'Seite 1', order: 1, blocks: [] }];
+      sortPages();
+      currentId = pages[0].id;
+      pages.forEach(p => persist(p.id));
+      render();
+    }
+    loops.forEach(clearInterval);
+    loops = [setInterval(poll, POLL_MS), setInterval(heartbeat, BEAT_MS)];
+    heartbeat();
+  }
+
+  function showConnect(err) {
+    mode = 'folder-wait';
+    loops.forEach(clearInterval);
+    loops = [];
+    $('connect').hidden = false;
+    $('connect-go').hidden = !rootHandle;
+    $('connect-pick').textContent = rootHandle ? 'Anderen Ordner wählen' : 'Ordner wählen';
+    $('connect-pick').className = rootHandle ? '' : 'primary';
+    $('connect-text').innerHTML = rootHandle
+      ? `Der Planer speichert im Ordner <code>${esc(rootHandle.name)}</code>. Der Browser fragt aus Sicherheitsgründen einmal nach, ob er darauf zugreifen darf.`
+      : 'Wähle den gemeinsamen Ordner <code>O:\\Gemeinsames</code>. Der Planer legt darin den Unterordner <code>Seitenplanung</code> an und speichert dort jede Zeitungsseite. Das musst du nur einmal machen.';
+    $('connect-err').textContent = err || '';
+    render();
+  }
+
+  $('connect-go').onclick = async () => {
+    try {
+      if ((await rootHandle.requestPermission({ mode: 'readwrite' })) === 'granted') return connect(rootHandle);
+      showConnect('Ohne Erlaubnis kann der Planer nicht im Ordner speichern.');
+    } catch (e) { showConnect('Der Ordner ist nicht erreichbar. Prüfe, ob das Laufwerk O: verbunden ist.'); }
+  };
+  $('connect-pick').onclick = async () => {
+    try {
+      const root = await window.showDirectoryPicker({ id: 'seitenplaner', mode: 'readwrite' });
+      await connect(root);
+    } catch (e) {
+      if (e && e.name !== 'AbortError') showConnect('Dieser Ordner kann nicht verwendet werden. Wähle O:\\Gemeinsames.');
+    }
+  };
+  $('connect-local').onclick = startLocal;
+  $('changefolder').onclick = () => { rootHandle = null; showConnect(); };
+  $('myname').value = myName;
+  $('myname').oninput = e => { myName = e.target.value.trim(); savePref(); };
+  $('myname').onchange = () => heartbeat();
+  window.addEventListener('pagehide', () => { if (dir) dir.removeEntry(`aktiv-${clientId}.json`).catch(() => {}); });
+
+  async function startFolder() {
+    mode = 'folder-wait';
+    let root = null;
+    try { root = await kv('ordner'); } catch (e) {}
+    if (root) {
+      rootHandle = root;
+      try {
+        if ((await root.queryPermission({ mode: 'readwrite' })) === 'granted') return connect(root);
+      } catch (e) {}
+    }
+    showConnect();
   }
 
   async function start() {
@@ -1019,7 +1254,11 @@
       // als lokale Datei geöffnet: Export per Download und Drucken anbieten
       $('export').hidden = false;
       $('print').hidden = false;
-      startLocal();
+      if ('showDirectoryPicker' in window) startFolder();
+      else {
+        startLocal();
+        notice('Für die gemeinsame Planung im Ordner O:\Gemeinsames bitte diese Datei in Microsoft Edge öffnen. Hier wird nur in diesem Browser gespeichert.');
+      }
       return;
     }
     const [dbNs, userNs, dlNs] = await Promise.all([
