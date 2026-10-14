@@ -163,6 +163,13 @@
   #ruler div.major { width: 12px; border-color: var(--muted); }
   #ruler div span { position: absolute; right: 14px; top: -7px; white-space: nowrap; }
   #page { position: relative; background: var(--page); box-shadow: 0 0 0 1px var(--line), var(--shadow); touch-action: none; }
+  .bund {
+    position: absolute; top: 0; bottom: 0; pointer-events: none;
+    background: repeating-linear-gradient(-45deg, var(--line) 0 1px, transparent 1px 7px);
+    border-left: 1px solid var(--muted); border-right: 1px solid var(--muted); opacity: .8;
+    display: grid; place-items: center;
+  }
+  .bund span { writing-mode: vertical-rl; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); background: var(--page); padding: 6px 0; }
   .col-guide { position: absolute; top: 0; bottom: 0; background: var(--guide); border-left: 1px dashed var(--guide-line); border-right: 1px dashed var(--guide-line); pointer-events: none; }
   .empty-page { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 24px; font-size: 13px; pointer-events: none; }
   .block {
@@ -260,10 +267,17 @@
   <div id="pagelist"></div>
   <div class="btns">
     <button id="addpage" type="button" class="primary">+ Seite</button>
+    <button id="addpano" type="button" title="Doppelseite über den Bund, 597,5 mm, 12 Spalten">+ Panorama</button>
     <button id="duppage" type="button">Duplizieren</button>
   </div>
   <label for="pagename">Name der Seite</label>
   <input id="pagename" type="text" autocomplete="off">
+  <label for="pageformat">Format</label>
+  <select id="pageformat">
+    <option value="0">Einzelseite (282,5 mm, 6 Sp.)</option>
+    <option value="1">Panoramaseite (597,5 mm, 12 Sp.)</option>
+  </select>
+  <div class="hint" id="formathint" hidden>Flächen rechts vom Satzspiegel werden beim Wechsel zur Einzelseite an den rechten Rand gesetzt. Mit Rückgängig lässt sich das zurücknehmen.</div>
   <div class="btns" id="delwrap">
     <button id="delpage" type="button" class="danger">Seite löschen</button>
   </div>
@@ -393,19 +407,41 @@
 (() => {
   // --- Satzspiegel ---------------------------------------------------------
   // Berliner Format
-  const PAGE_W = 282.5;            // mm
+  const SINGLE_W = 282.5;          // mm, Einzelseite
+  const PANO_W = 597.5;            // mm, Panoramaseite (zwei Seiten über den Bund)
   const PAGE_H = 431;              // mm
-  const COLS = 6;
   const COL_W = 45;                // mm je Spalte
   const GUTTER = 2.5;              // mm Zwischenschlag
   const PITCH = COL_W + GUTTER;    // 47,5 mm
-  const PAGE_SPMM = COLS * PAGE_H; // 2586 spmm
-  const colsWidth = n => n * COL_W + (n - 1) * GUTTER; // 1=45, 2=92,5, 3=140, 4=187,5, 5=235, 6=282,5
-  const colLeft = c => c * PITCH;
+  const BUND = PANO_W - 2 * SINGLE_W;          // 32,5 mm zwischen den Satzspiegeln
+  const RIGHT_SHIFT = SINGLE_W + BUND - 6 * PITCH; // Versatz der rechten Hälfte (30 mm)
+
+  // Geometrie der gerade bearbeiteten Seite: Einzelseite 6 Sp. (2586 spmm), Panorama 12 Sp. (5172 spmm)
+  let PANO = false, COLS = 6, PAGE_W = SINGLE_W, PAGE_SPMM = 6 * PAGE_H;
+  function useGeo(p) {
+    PANO = !!(p && p.panorama);
+    COLS = PANO ? 12 : 6;
+    PAGE_W = PANO ? PANO_W : SINGLE_W;
+    PAGE_SPMM = COLS * PAGE_H;
+  }
+  function withGeo(p, fn) {
+    const prev = PANO;
+    useGeo(p);
+    try { return fn(); } finally { useGeo({ panorama: prev }); }
+  }
+  const colLeft = c => c * PITCH + (c >= 6 ? RIGHT_SHIFT : 0);
+  // Breite von n Spalten ab Spalte c; über den Bund hinweg zählt der Bund mit
+  const colsWidth = (n, c = 0) => colLeft(c + n - 1) + COL_W - colLeft(c); // 1=45, 2=92,5 … 6=282,5
   const FINE = 0.5;                // mm, Schrittweite bei freier Platzierung (Alt)
   const isFree = b => Number.isFinite(b.x);
   const leftOf = b => isFree(b) ? b.x : colLeft(b.col);
-  const nearestCol = (x, cols) => clamp(Math.round(x / PITCH), 0, COLS - cols);
+  const widthOf = b => colsWidth(b.cols, b.col);
+  function nearestCol(x, cols) {
+    let best = 0;
+    for (let c = 1; c + cols <= COLS; c++) if (Math.abs(colLeft(c) - x) < Math.abs(colLeft(best) - x)) best = c;
+    return best;
+  }
+  const maxX = (cols, x) => PAGE_W - colsWidth(cols, nearestCol(x, cols));
   const roundFine = v => Math.round(v / FINE) * FINE;
 
   const TYPES = {
@@ -455,7 +491,7 @@
   const page = () => pages.find(p => p.id === currentId) || pages[0] || null;
   const snapStep = () => Number($('snap').value);
   const blockById = id => page()?.blocks.find(b => b.id === id);
-  const bodyOf = p => ({ name: p.name, order: p.order, blocks: p.blocks });
+  const bodyOf = p => ({ name: p.name, order: p.order, panorama: !!p.panorama, blocks: p.blocks });
   const sortPages = () => pages.sort((a, b) => (a.order - b.order) || (a.id < b.id ? -1 : 1));
 
   // --- Speichern -----------------------------------------------------------
@@ -555,10 +591,11 @@
     render();
   }
   function normalize(id, d) {
-    return {
+    return withGeo(d, () => ({
       id,
       name: typeof d.name === 'string' ? d.name : 'Seite',
       order: Number.isFinite(d.order) ? d.order : 0,
+      panorama: !!d.panorama,
       blocks: Array.isArray(d.blocks) ? d.blocks.filter(b => b && b.id).map(b => {
         const cols = clamp(Math.round(Number(b.cols) || 1), 1, COLS);
         const h = clamp(Number(b.h) || 10, 1, PAGE_H);
@@ -570,19 +607,19 @@
           y: clamp(Number(b.y) || 0, 0, PAGE_H - h),
         };
         if (Number.isFinite(b.x)) {
-          out.x = clamp(Number(b.x), 0, PAGE_W - colsWidth(cols));
+          out.x = clamp(Number(b.x), 0, maxX(cols, Number(b.x)));
           out.col = nearestCol(out.x, cols);
         }
         return out;
       }) : [],
-    };
+    }));
   }
 
   // --- Geometrie -----------------------------------------------------------
   // Überschneidung in echten Millimetern (Zwischenschlag zählt nicht als Überlappung)
   function overlaps(a, b) {
     const la = leftOf(a), lb = leftOf(b);
-    return la < lb + colsWidth(b.cols) - 1e-9 && lb < la + colsWidth(a.cols) - 1e-9 &&
+    return la < lb + widthOf(b) - 1e-9 && lb < la + widthOf(a) - 1e-9 &&
            a.y < b.y + b.h - 1e-9 && b.y < a.y + a.h - 1e-9;
   }
   function overlappingIds(blocks) {
@@ -620,14 +657,31 @@
   function fillSelect(sel, items) {
     sel.innerHTML = items.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
   }
-  const colOptions = Array.from({ length: COLS }, (_, i) => [i + 1, `${i + 1} (${fmt(colsWidth(i + 1))} mm)`]);
-  fillSelect($('n-cols'), colOptions);
-  fillSelect($('e-cols'), colOptions);
+  let geoShown = null;
+  function fillColOptions() {
+    const opts = Array.from({ length: COLS }, (_, i) => [i + 1, `${i + 1} (${fmt(colsWidth(i + 1))} mm)`]);
+    const keep = $('n-cols').value || 2;
+    fillSelect($('n-cols'), opts);
+    fillSelect($('e-cols'), opts);
+    $('n-cols').value = Math.min(COLS, Number(keep));
+  }
+  fillColOptions();
   fillSelect($('n-type'), Object.entries(TYPES).map(([k, t]) => [k, t.label]));
   fillSelect($('e-type'), Object.entries(TYPES).map(([k, t]) => [k, t.label]));
   $('n-cols').value = 2;
 
   function render() {
+    useGeo(page());
+    if (geoShown !== PANO) {
+      geoShown = PANO;
+      fillColOptions();
+      $('format').textContent = PANO
+        ? `Panoramaseite · ${fmt(PANO_W)} × ${PAGE_H} mm · 12 Sp.`
+        : `Berliner Format · ${fmt(SINGLE_W)} × ${PAGE_H} mm · 6 Sp.`;
+      $('st-total').textContent = fmt(PAGE_SPMM) + ' spmm';
+      $('e-x').max = PAGE_W;
+      requestAnimationFrame(fit);
+    }
     document.body.classList.toggle('readonly-mode', !canWrite);
     renderStatus();
     renderPageList();
@@ -650,8 +704,8 @@
     s.textContent = mode === 'shared' && !canWrite ? 'Nur ansehen' : txt[1];
     s.title = txt[2];
     $('undo').disabled = !history.length || !canWrite;
-    for (const id of ['addpage', 'duppage', 'delpage', 'create', 'import', 'pagename'])
-      $(id).disabled = !canWrite || mode === 'loading' || mode === 'folder-wait' || (id !== 'addpage' && id !== 'import' && !page());
+    for (const id of ['addpage', 'addpano', 'duppage', 'delpage', 'create', 'import', 'pagename', 'pageformat'])
+      $(id).disabled = !canWrite || mode === 'loading' || mode === 'folder-wait' || (!/^(addpage|addpano|import)$/.test(id) && !page());
     for (const el of $('newbox').querySelectorAll('input, select')) el.disabled = !canWrite;
     for (const el of $('editbox').querySelectorAll('input, select, button')) el.disabled = !canWrite;
   }
@@ -660,9 +714,10 @@
     const k = w / PAGE_W, h = PAGE_H * k;
     const r = p.blocks.map(b => {
       const v = TYPES[typeOf(b)].v;
-      return `<rect x="${leftOf(b) * k}" y="${b.y * k}" width="${colsWidth(b.cols) * k}" height="${b.h * k}" style="fill:var(--${v}-bg);stroke:var(--${v}-fg)" stroke-width="0.6"/>`;
+      return `<rect x="${leftOf(b) * k}" y="${b.y * k}" width="${widthOf(b) * k}" height="${b.h * k}" style="fill:var(--${v}-bg);stroke:var(--${v}-fg)" stroke-width="0.6"/>`;
     }).join('');
-    return `<svg width="${w}" height="${h.toFixed(1)}" viewBox="0 0 ${w} ${h.toFixed(1)}" aria-hidden="true">${r}</svg>`;
+    const bund = PANO ? `<rect x="${SINGLE_W * k}" y="0" width="${BUND * k}" height="${h.toFixed(1)}" style="fill:var(--line)"/>` : '';
+    return `<svg width="${w}" height="${h.toFixed(1)}" viewBox="0 0 ${w} ${h.toFixed(1)}" aria-hidden="true">${bund}${r}</svg>`;
   }
 
   function peerNames(pageId) {
@@ -674,13 +729,15 @@
     $('peerwarn').hidden = !others;
     $('peerwarn').textContent = others ? `Diese Seite ist gerade auch bei ${others} geöffnet. Sprecht euch ab: Wer zuletzt speichert, überschreibt die Änderungen des anderen.` : '';
     $('pagelist').innerHTML = pages.length ? pages.map(p => {
-      const pct = Math.round(usedSpmm(p.blocks) / PAGE_SPMM * 100);
+      const pct = withGeo(p, () => Math.round(usedSpmm(p.blocks) / PAGE_SPMM * 100));
       return `<button type="button" class="page-item${cur && p.id === cur.id ? ' active' : ''}" data-id="${p.id}">
-        ${miniSvg(p, 40)}
-        <span class="meta"><span class="name" style="display:block">${esc(p.name || 'Ohne Namen')}</span><span class="fill num" style="display:block">${pct} % · ${p.blocks.length} Fl.</span>${peerNames(p.id) ? `<span class="peers">✎ ${esc(peerNames(p.id))}</span>` : ''}</span>
+        ${withGeo(p, () => miniSvg(p, p.panorama ? 84 : 40))}
+        <span class="meta"><span class="name" style="display:block">${esc(p.name || 'Ohne Namen')}</span><span class="fill num" style="display:block">${p.panorama ? 'Panorama · ' : ''}${pct} % · ${p.blocks.length} Fl.</span>${peerNames(p.id) ? `<span class="peers">✎ ${esc(peerNames(p.id))}</span>` : ''}</span>
       </button>`;
     }).join('') : `<div class="hint" style="margin:0">${mode === 'loading' || mode === 'folder-wait' ? 'Lade Seiten …' : 'Noch keine Seiten. Lege mit „+ Seite“ die erste an.'}</div>`;
     if (document.activeElement !== $('pagename')) $('pagename').value = cur ? cur.name : '';
+    $('pageformat').value = cur && cur.panorama ? '1' : '0';
+    $('formathint').hidden = !(cur && cur.panorama);
   }
 
   function renderPage() {
@@ -692,6 +749,7 @@
     let html = '';
     for (let c = 0; c < COLS; c++)
       html += `<div class="col-guide" style="left:${colLeft(c) * scale}px;width:${COL_W * scale}px"></div>`;
+    if (PANO) html += `<div class="bund" style="left:${SINGLE_W * scale}px;width:${BUND * scale}px"><span>Bund</span></div>`;
 
     if (!cur) {
       html += `<div class="empty-page">${mode === 'loading' || mode === 'folder-wait' ? 'Lade Planung …' : 'Noch keine Seite angelegt.<br>Links auf „+ Seite“ klicken.'}</div>`;
@@ -701,7 +759,7 @@
       for (const b of cur.blocks) {
         const t = typeOf(b);
         const cls = ['block', 't-' + t, isFree(b) ? 'free' : '', b.id === selected ? 'selected' : '', bad.has(b.id) ? 'overlap' : ''].join(' ');
-        html += `<div class="${cls}" data-id="${b.id}" tabindex="0" title="${isFree(b) ? 'Frei platziert, ' + fmt(b.x) + ' mm von links' : ''}" style="left:${leftOf(b) * scale}px;top:${b.y * scale}px;width:${colsWidth(b.cols) * scale}px;height:${b.h * scale}px">
+        html += `<div class="${cls}" data-id="${b.id}" tabindex="0" title="${isFree(b) ? 'Frei platziert, ' + fmt(b.x) + ' mm von links' : ''}" style="left:${leftOf(b) * scale}px;top:${b.y * scale}px;width:${widthOf(b) * scale}px;height:${b.h * scale}px">
           <div class="t">${esc(b.title || TYPES[t].label)}</div>
           <div class="d">${b.cols} Sp. × ${fmt(b.h)} mm</div>
           <div class="d">${fmt(b.cols * b.h)} spmm</div>
@@ -760,7 +818,7 @@
       set('e-y', b.y);
       set('e-h', b.h);
       set('e-note', b.note || '');
-      $('e-info').textContent = `${fmt(colsWidth(b.cols))} × ${fmt(b.h)} mm = ${fmt(b.cols * b.h)} spmm · Unterkante ${fmt(b.y + b.h)} mm` +
+      $('e-info').textContent = `${fmt(widthOf(b))} × ${fmt(b.h)} mm = ${fmt(b.cols * b.h)} spmm · Unterkante ${fmt(b.y + b.h)} mm` +
         (isFree(b) ? ' · frei platziert (außerhalb des Spaltenrasters)' : '');
       $('e-snap').hidden = !isFree(b);
     }
@@ -789,7 +847,7 @@
       fn(b);
       b.cols = clamp(b.cols, 1, COLS);
       if (isFree(b)) {
-        b.x = clamp(b.x, 0, PAGE_W - colsWidth(b.cols));
+        b.x = clamp(b.x, 0, maxX(b.cols, b.x));
         b.col = nearestCol(b.x, b.cols);
       }
       b.col = clamp(b.col, 0, COLS - b.cols);
@@ -804,7 +862,7 @@
   $('e-col').onchange = e => editSelected(b => { delete b.x; b.col = Number(e.target.value); });
   // Links-Wert: trifft er eine Spaltenkante, rastet die Fläche ein, sonst frei
   $('e-x').onchange = e => editSelected(b => {
-    const x = clamp(roundFine(num(e.target.value) || 0), 0, PAGE_W - colsWidth(b.cols));
+    const x = clamp(roundFine(num(e.target.value) || 0), 0, maxX(b.cols, num(e.target.value) || 0));
     const c = nearestCol(x, b.cols);
     if (Math.abs(colLeft(c) - x) < 1e-9) { delete b.x; b.col = c; } else b.x = x;
   });
@@ -860,6 +918,20 @@
     if (!canWrite) return;
     const order = pages.length ? Math.max(...pages.map(p => p.order)) + 1 : 1;
     addPage({ id: uid(), name: 'Seite ' + (pages.length + 1), order, blocks: [] });
+  };
+  $('addpano').onclick = () => {
+    if (!canWrite) return;
+    const order = pages.length ? Math.max(...pages.map(p => p.order)) + 1 : 1;
+    addPage({ id: uid(), name: 'Panorama ' + (pages.filter(p => p.panorama).length + 1), order, panorama: true, blocks: [] });
+  };
+  $('pageformat').onchange = e => {
+    const pano = e.target.value === '1';
+    change(p => {
+      p.panorama = pano;
+      p.blocks = normalize(p.id, p).blocks; // an den neuen Satzspiegel anpassen
+    });
+    selected = blockById(selected) ? selected : null;
+    render();
   };
   $('duppage').onclick = () => {
     const cur = page();
@@ -927,13 +999,18 @@
     const step = free ? FINE : snapStep();
     showAltHint(free);
     if (drag.resize) {
-      const w = colsWidth(start.cols) + dx;
-      const room = isFree(b) ? PAGE_W - b.x : PAGE_W - colLeft(b.col);
-      b.cols = clamp(Math.round((w + GUTTER) / PITCH), 1, Math.max(1, Math.floor((room + GUTTER) / PITCH + 1e-9)));
+      // Spaltenzahl, deren Breite der gezogenen Breite am nächsten kommt
+      const w = colsWidth(start.cols, b.col) + dx;
+      let best = 1;
+      for (let n = 1; b.col + n <= COLS; n++) {
+        if (leftOf(b) + colsWidth(n, b.col) > PAGE_W + 1e-9) break;
+        if (Math.abs(colsWidth(n, b.col) - w) < Math.abs(colsWidth(best, b.col) - w)) best = n;
+      }
+      b.cols = best;
       b.h = clamp(Math.round((start.h + dy) / step) * step, step, PAGE_H - b.y);
       if (isFree(b)) b.col = nearestCol(b.x, b.cols);
     } else if (free) {
-      b.x = clamp(roundFine(start.left + dx), 0, PAGE_W - colsWidth(b.cols));
+      b.x = clamp(roundFine(start.left + dx), 0, maxX(b.cols, start.left + dx));
       b.col = nearestCol(b.x, b.cols);
       b.y = clamp(roundFine(start.y + dy), 0, PAGE_H - b.h);
     } else {
@@ -989,6 +1066,7 @@
     const st = $('stage');
     const byH = (st.clientHeight - 90) / PAGE_H;
     const byW = (st.clientWidth - 100) / PAGE_W;
+    if (PANO) { scale = clamp(Math.floor(byW * 10) / 10, 0.6, 4); $('zoom').value = scale; renderPage(); return; }
     scale = clamp(Math.floor(Math.min(byH, byW) * 10) / 10, 0.6, 4);
     $('zoom').value = scale;
     renderPage();
@@ -1000,7 +1078,7 @@
 
   // --- Export / Import -----------------------------------------------------
   $('export').onclick = async () => {
-    const data = JSON.stringify({ format: 'seitenplaner', version: 1, pages: pages.map(p => ({ name: p.name, blocks: p.blocks })) }, null, 2);
+    const data = JSON.stringify({ format: 'seitenplaner', version: 1, pages: pages.map(p => ({ name: p.name, panorama: !!p.panorama, blocks: p.blocks })) }, null, 2);
     const filename = 'seitenplanung-' + new Date().toISOString().slice(0, 10) + '.json';
     if (!downloads) {
       // außerhalb von claude.ai (lokale Datei): normaler Download
@@ -1020,7 +1098,7 @@
   $('print').onclick = () => {
     const prev = scale;
     selected = null;
-    scale = 260 / PAGE_H * 96 / 25.4; // ca. 260 mm hoch, passt auf A4
+    scale = Math.min(260 / PAGE_H, 180 / PAGE_W) * 96 / 25.4; // passt auf A4 hoch
     render();
     window.print();
     scale = prev;

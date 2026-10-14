@@ -12,6 +12,10 @@ Eine einzelne HTML-Datei (`index.html`) zum Planen von Zeitungsseiten. Keine Ins
 
 Spaltenbreiten: 1 = 45 mm, 2 = 92,5 mm, 3 = 140 mm, 4 = 187,5 mm, 5 = 235 mm, 6 = 282,5 mm.
 
+**Panoramaseiten:** 597,5 × 431 mm, 12 Spalten (zwei Satzspiegel mit 32,5 mm Bund dazwischen), 5.172 spmm.
+Eine Fläche über den Bund ist entsprechend breiter (z. B. Spalte 6 + 7 = 122,5 mm, alle 12 Spalten = 597,5 mm).
+Anlegen mit „+ Panorama“ oder eine bestehende Seite unter „Format“ umstellen.
+
 ## Gemeinsam planen über das Serverlaufwerk
 
 1. `index.html` nach `O:\Gemeinsames` kopieren, z. B. als `O:\Gemeinsames\Seitenplaner.html`.
