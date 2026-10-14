@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seitenplaner Zeitung</title>
+<style>
+  :root {
+    --bg: #f3f4f6;
+    --panel: #ffffff;
+    --line: #d1d5db;
+    --text: #111827;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --danger: #dc2626;
+    --page: #ffffff;
+    --guide: rgba(37, 99, 235, 0.07);
+    --guide-line: rgba(37, 99, 235, 0.25);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    display: grid;
+    grid-template-columns: 230px 1fr 320px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "top top top" "pages stage side";
+  }
+  header {
+    grid-area: top;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 8px 14px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  header .spacer { flex: 1; }
+  button, select, input {
+    font: inherit; color: inherit;
+  }
+  button {
+    border: 1px solid var(--line); background: #fff; border-radius: 6px;
+    padding: 5px 10px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--danger); }
+  button.danger:hover { border-color: var(--danger); }
+  input[type=text], input[type=number], select, textarea {
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: #fff; width: 100%;
+    font: inherit;
+  }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+
+  /* Seitenliste */
+  #pages {
+    grid-area: pages; overflow: auto; padding: 12px;
+    background: var(--panel); border-right: 1px solid var(--line);
+  }
+  #pages h2, #side h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 4px 0 8px; }
+  .page-item {
+    display: flex; gap: 10px; align-items: center;
+    padding: 6px; border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+  }
+  .page-item:hover { background: var(--bg); }
+  .page-item.active { border-color: var(--accent); background: #eff6ff; }
+  .page-item svg { flex: none; border: 1px solid var(--line); background: #fff; }
+  .page-item .meta { min-width: 0; }
+  .page-item .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-item .fill { font-size: 12px; color: var(--muted); }
+
+  /* Arbeitsfläche */
+  #stage { grid-area: stage; overflow: auto; position: relative; }
+  #stage-inner { padding: 30px 30px 40px 60px; width: max-content; margin: 0 auto; }
+  #colhead { position: relative; height: 18px; font-size: 11px; color: var(--muted); }
+  #colhead span { position: absolute; text-align: center; }
+  #pagewrap { position: relative; display: flex; }
+  #ruler { position: absolute; right: 100%; top: 0; width: 40px; font-size: 10px; color: var(--muted); }
+  #ruler div { position: absolute; right: 4px; border-top: 1px solid var(--line); width: 6px; }
+  #ruler div.major { width: 12px; border-color: var(--muted); }
+  #ruler div span { position: absolute; right: 14px; top: -7px; white-space: nowrap; }
+  #page {
+    position: relative; background: var(--page);
+    box-shadow: 0 0 0 1px var(--line), 0 4px 18px rgba(0,0,0,.08);
+    touch-action: none;
+  }
+  .col-guide { position: absolute; top: 0; bottom: 0; background: var(--guide); border-left: 1px dashed var(--guide-line); border-right: 1px dashed var(--guide-line); pointer-events: none; }
+  .block {
+    position: absolute; overflow: hidden; border: 1.5px solid; border-radius: 2px;
+    padding: 3px 5px; cursor: grab; user-select: none; touch-action: none;
+    font-size: 12px; line-height: 1.25;
+  }
+  .block:active { cursor: grabbing; }
+  .block.selected { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 5; }
+  .block.overlap { border-color: var(--danger) !important; background-image: repeating-linear-gradient(45deg, rgba(220,38,38,.12) 0 6px, transparent 6px 12px); }
+  .block .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .block .d { font-size: 11px; opacity: .8; white-space: nowrap; }
+  .block .handle {
+    position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 50%, currentColor 50%); opacity: .55;
+  }
+  .ghost { position: absolute; pointer-events: none; border: 2px dashed var(--accent); background: rgba(37,99,235,.08); z-index: 10; }
+
+  /* rechte Seite */
+  #side { grid-area: side; overflow: auto; padding: 12px; background: var(--panel); border-left: 1px solid var(--line); }
+  section.box { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 12px; margin-bottom: 12px; }
+  .stats { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-variant-numeric: tabular-nums; }
+  .stats b { text-align: right; }
+  .bar { height: 10px; border-radius: 5px; background: var(--bg); overflow: hidden; margin: 8px 0 2px; }
+  .bar > div { height: 100%; background: var(--accent); }
+  .bar.over > div { background: var(--danger); }
+  .warn { color: var(--danger); font-size: 12px; margin-top: 6px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  #blocklist { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+  #blocklist li { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+  #blocklist li:hover { background: var(--bg); }
+  #blocklist li.sel { background: #eff6ff; }
+  #blocklist .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; border: 1px solid rgba(0,0,0,.2); }
+  #blocklist .nm { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #blocklist .sz { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+
+  @media print {
+    body { display: block; background: #fff; }
+    header, #pages, #side, #colhead, #ruler { display: none !important; }
+    #stage { overflow: visible; }
+    #stage-inner { padding: 0; }
+    .col-guide { display: none; }
+    #page { box-shadow: 0 0 0 1px #000; }
+    .block.selected { outline: none; }
+    .block .handle { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Seitenplaner</h1>
+  <button id="undo" title="Rückgängig (Strg+Z)">↶ Rückgängig</button>
+  <label style="margin:0;display:flex;align-items:center;gap:6px">Raster
+    <select id="snap" style="width:auto">
+      <option value="1">1 mm</option>
+      <option value="5" selected>5 mm</option>
+      <option value="10">10 mm</option>
+    </select>
+  </label>
+  <label style="margin:0;display:flex;align-items:center;gap:6px">Zoom
+    <input id="zoom" type="range" min="0.8" max="4" step="0.1" style="width:120px">
+  </label>
+  <button id="fit">Einpassen</button>
+  <span class="spacer"></span>
+  <button id="export">Exportieren</button>
+  <button id="import">Importieren</button>
+  <input id="importfile" type="file" accept="application/json,.json" hidden>
+  <button id="print" title="Aktuelle Seite auf A4 verkleinert drucken">Drucken</button>
+</header>
+
+<aside id="pages">
+  <h2>Seiten</h2>
+  <div id="pagelist"></div>
+  <div class="btns">
+    <button id="addpage" class="primary">+ Seite</button>
+    <button id="duppage">Duplizieren</button>
+  </div>
+  <label>Name der Seite</label>
+  <input id="pagename" type="text">
+  <div class="btns">
+    <button id="delpage" class="danger">Seite löschen</button>
+  </div>
+</aside>
+
+<main id="stage">
+  <div id="stage-inner">
+    <div id="colhead"></div>
+    <div id="pagewrap">
+      <div id="ruler"></div>
+      <div id="page"></div>
+    </div>
+  </div>
+</main>
+
+<aside id="side">
+  <section class="box">
+    <h2>Belegung</h2>
+    <div class="stats">
+      <span>Belegt</span><b id="st-used"></b>
+      <span>Frei</span><b id="st-free"></b>
+      <span>Seite gesamt</span><b>2.640 spmm</b>
+    </div>
+    <div class="bar" id="st-bar"><div></div></div>
+    <div id="st-warn" class="warn"></div>
+  </section>
+
+  <section class="box">
+    <h2>Neue Fläche</h2>
+    <div class="row">
+      <div>
+        <label for="n-cols">Spalten</label>
+        <select id="n-cols"></select>
+      </div>
+      <div>
+        <label for="n-h">Höhe (mm)</label>
+        <input id="n-h" type="number" min="1" max="440" step="0.5" value="50">
+      </div>
+    </div>
+    <label for="n-type">Art</label>
+    <select id="n-type"></select>
+    <label for="n-title">Bezeichnung</label>
+    <input id="n-title" type="text" placeholder="z. B. Anzeige Autohaus">
+    <div class="btns"><button id="create" class="primary">Fläche anlegen</button></div>
+    <div class="hint">Die Fläche wird an der ersten freien Stelle platziert. Danach per Maus verschieben; Ecke unten rechts zieht die Größe.</div>
+  </section>
+
+  <section class="box" id="editbox" hidden>
+    <h2>Ausgewählte Fläche</h2>
+    <label for="e-title">Bezeichnung</label>
+    <input id="e-title" type="text">
+    <div class="row">
+      <div>
+        <label for="e-type">Art</label>
+        <select id="e-type"></select>
+      </div>
+      <div>
+        <label for="e-cols">Spalten</label>
+        <select id="e-cols"></select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="e-col">Startspalte</label>
+        <select id="e-col"></select>
+      </div>
+      <div>
+        <label for="e-y">Oben (mm)</label>
+        <input id="e-y" type="number" min="0" max="440" step="0.5">
+      </div>
+      <div>
+        <label for="e-h">Höhe (mm)</label>
+        <input id="e-h" type="number" min="1" max="440" step="0.5">
+      </div>
+    </div>
+    <label for="e-note">Notiz</label>
+    <input id="e-note" type="text" placeholder="optional">
+    <div class="hint" id="e-info"></div>
+    <div class="btns">
+      <button id="e-dup">Duplizieren</button>
+      <button id="e-del" class="danger">Löschen</button>
+    </div>
+  </section>
+
+  <section class="box">
+    <h2>Flächen auf dieser Seite</h2>
+    <ul id="blocklist"></ul>
+    <div class="hint">Tastatur: Pfeiltasten verschieben, Entf löscht, Strg+D dupliziert.</div>
+  </section>
+</aside>
+
+<script>
+(() => {
+  // --- Satzspiegel ---------------------------------------------------------
+  const PAGE_W = 277.5;            // mm
+  const PAGE_H = 440;              // mm
+  const COLS = 6;
+  const COL_W = 45;                // mm, eine Spalte
+  const GUTTER = 1.5;              // mm, Zwischenschlag
+  const PITCH = COL_W + GUTTER;    // 46,5 mm
+  const PAGE_SPMM = COLS * PAGE_H; // 2640 spmm
+  const colsWidth = n => n * COL_W + (n - 1) * GUTTER; // 1=45, 2=91,5 … 6=277,5
+  const colLeft = c => c * PITCH;
+
+  const TYPES = {
+    artikel:  { label: 'Artikel',   bg: '#dbeafe', fg: '#1d4ed8' },
+    anzeige:  { label: 'Anzeige',   bg: '#fef3c7', fg: '#b45309' },
+    bild:     { label: 'Bild',      bg: '#dcfce7', fg: '#15803d' },
+    sonstiges:{ label: 'Sonstiges', bg: '#ede9fe', fg: '#6d28d9' },
+  };
+
+  const STORE_KEY = 'zeitungsplaner.v1';
+  const $ = id => document.getElementById(id);
+  const fmt = n => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  // --- Zustand -------------------------------------------------------------
+  let state = load() || {
+    pages: [{ id: uid(), name: 'Seite 1', blocks: [] }],
+    current: 0,
+  };
+  let selected = null;
+  let scale = 2;      // px pro mm
+  let history = [];
+
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(STORE_KEY));
+      if (s && Array.isArray(s.pages) && s.pages.length) return s;
+    } catch (e) {}
+    return null;
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  function snapshot() {
+    history.push(JSON.stringify(state));
+    if (history.length > 100) history.shift();
+  }
+  function undo() {
+    if (!history.length) return;
+    state = JSON.parse(history.pop());
+    if (!page().blocks.some(b => b.id === selected)) selected = null;
+    commit(false);
+  }
+  function commit() {
+    save();
+    render();
+  }
+
+  const page = () => state.pages[state.current];
+  const snapStep = () => Number($('snap').value);
+  const blockById = id => page().blocks.find(b => b.id === id);
+
+  // --- Geometrie -----------------------------------------------------------
+  function overlaps(a, b) {
+    return a.col < b.col + b.cols && b.col < a.col + a.cols &&
+           a.y < b.y + b.h && b.y < a.y + a.h;
+  }
+  function overlappingIds(blocks) {
+    const ids = new Set();
+    for (let i = 0; i < blocks.length; i++)
+      for (let j = i + 1; j < blocks.length; j++)
+        if (overlaps(blocks[i], blocks[j])) { ids.add(blocks[i].id); ids.add(blocks[j].id); }
+    return ids;
+  }
+  // belegte Spaltenmillimeter (Überlappungen nur einmal gezählt)
+  function usedSpmm(blocks) {
+    let total = 0;
+    for (let c = 0; c < COLS; c++) {
+      const iv = blocks.filter(b => c >= b.col && c < b.col + b.cols)
+        .map(b => [b.y, b.y + b.h]).sort((p, q) => p[0] - q[0]);
+      let end = -1;
+      for (const [s, e] of iv) {
+        if (s > end) { total += e - s; end = e; }
+        else if (e > end) { total += e - end; end = e; }
+      }
+    }
+    return total;
+  }
+  function findFree(cols, h, blocks, step) {
+    for (let y = 0; y + h <= PAGE_H + 1e-9; y += step)
+      for (let c = 0; c + cols <= COLS; c++) {
+        const cand = { col: c, cols, y, h };
+        if (!blocks.some(b => overlaps(cand, b))) return cand;
+      }
+    return null;
+  }
+
+  // --- Rendering -----------------------------------------------------------
+  function fillSelect(sel, items) {
+    sel.innerHTML = items.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+  }
+  const colOptions = Array.from({ length: COLS }, (_, i) => [i + 1, `${i + 1} (${fmt(colsWidth(i + 1))} mm)`]);
+  fillSelect($('n-cols'), colOptions);
+  fillSelect($('e-cols'), colOptions);
+  fillSelect($('n-type'), Object.entries(TYPES).map(([k, t]) => [k, t.label]));
+  fillSelect($('e-type'), Object.entries(TYPES).map(([k, t]) => [k, t.label]));
+  $('n-cols').value = 2;
+
+  function render() {
+    renderPageList();
+    renderPage();
+    renderSide();
+  }
+
+  function miniSvg(p, w) {
+    const k = w / PAGE_W, h = PAGE_H * k;
+    const r = p.blocks.map(b => {
+      const t = TYPES[b.type] || TYPES.sonstiges;
+      return `<rect x="${colLeft(b.col) * k}" y="${b.y * k}" width="${colsWidth(b.cols) * k}" height="${b.h * k}" fill="${t.bg}" stroke="${t.fg}" stroke-width="0.6"/>`;
+    }).join('');
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${r}</svg>`;
+  }
+
+  function renderPageList() {
+    $('pagelist').innerHTML = state.pages.map((p, i) => {
+      const pct = Math.round(usedSpmm(p.blocks) / PAGE_SPMM * 100);
+      return `<div class="page-item${i === state.current ? ' active' : ''}" data-i="${i}">
+        ${miniSvg(p, 44)}
+        <div class="meta"><div class="name">${esc(p.name)}</div><div class="fill">${pct} % belegt · ${p.blocks.length} Fl.</div></div>
+      </div>`;
+    }).join('');
+    $('pagename').value = page().name;
+  }
+
+  function renderPage() {
+    const el = $('page');
+    el.style.width = PAGE_W * scale + 'px';
+    el.style.height = PAGE_H * scale + 'px';
+
+    let html = '';
+    for (let c = 0; c < COLS; c++)
+      html += `<div class="col-guide" style="left:${colLeft(c) * scale}px;width:${COL_W * scale}px"></div>`;
+
+    const bad = overlappingIds(page().blocks);
+    for (const b of page().blocks) {
+      const t = TYPES[b.type] || TYPES.sonstiges;
+      const cls = ['block', b.id === selected ? 'selected' : '', bad.has(b.id) ? 'overlap' : ''].join(' ');
+      html += `<div class="${cls}" data-id="${b.id}" style="left:${colLeft(b.col) * scale}px;top:${b.y * scale}px;width:${colsWidth(b.cols) * scale}px;height:${b.h * scale}px;background-color:${t.bg};border-color:${t.fg};color:${t.fg}">
+        <div class="t">${esc(b.title || t.label)}</div>
+        <div class="d">${b.cols} Sp. × ${fmt(b.h)} mm</div>
+        <div class="d">${fmt(b.cols * b.h)} spmm</div>
+        ${b.note ? `<div class="d">${esc(b.note)}</div>` : ''}
+        <div class="handle" data-handle="1"></div>
+      </div>`;
+    }
+    el.innerHTML = html;
+
+    // Spaltenköpfe
+    $('colhead').style.width = PAGE_W * scale + 'px';
+    $('colhead').style.marginLeft = '0';
+    $('colhead').innerHTML = Array.from({ length: COLS }, (_, c) =>
+      `<span style="left:${colLeft(c) * scale}px;width:${COL_W * scale}px">${c + 1}</span>`).join('');
+
+    // Lineal
+    let r = '';
+    const minor = scale >= 1.5 ? 5 : 10;
+    for (let y = 0; y <= PAGE_H; y += minor) {
+      const major = y % 50 === 0;
+      r += `<div class="${major ? 'major' : ''}" style="top:${y * scale}px">${major ? `<span>${y}</span>` : ''}</div>`;
+    }
+    $('ruler').innerHTML = r;
+    $('ruler').style.height = PAGE_H * scale + 'px';
+  }
+
+  function renderSide() {
+    const blocks = page().blocks;
+    const used = usedSpmm(blocks);
+    $('st-used').textContent = fmt(used) + ' spmm (' + Math.round(used / PAGE_SPMM * 100) + ' %)';
+    $('st-free').textContent = fmt(PAGE_SPMM - used) + ' spmm';
+    $('st-bar').firstElementChild.style.width = Math.min(100, used / PAGE_SPMM * 100) + '%';
+    const bad = overlappingIds(blocks);
+    $('st-warn').textContent = bad.size ? `Achtung: ${bad.size} Flächen überlappen sich (rot markiert).` : '';
+
+    $('blocklist').innerHTML = blocks.length ? blocks
+      .slice().sort((a, b) => a.y - b.y || a.col - b.col)
+      .map(b => {
+        const t = TYPES[b.type] || TYPES.sonstiges;
+        return `<li data-id="${b.id}" class="${b.id === selected ? 'sel' : ''}">
+          <span class="sw" style="background:${t.bg};border-color:${t.fg}"></span>
+          <span class="nm">${esc(b.title || t.label)}</span>
+          <span class="sz">${b.cols}×${fmt(b.h)}</span></li>`;
+      }).join('') : '<li style="cursor:default;color:var(--muted)">Noch keine Flächen.</li>';
+
+    const b = selected && blockById(selected);
+    $('editbox').hidden = !b;
+    if (b) {
+      fillSelect($('e-col'), Array.from({ length: COLS - b.cols + 1 }, (_, i) => [i, `Sp. ${i + 1}`]));
+      const active = document.activeElement;
+      const set = (id, v) => { if (active !== $(id)) $(id).value = v; };
+      set('e-title', b.title || '');
+      set('e-type', b.type);
+      set('e-cols', b.cols);
+      set('e-col', b.col);
+      set('e-y', b.y);
+      set('e-h', b.h);
+      set('e-note', b.note || '');
+      $('e-info').textContent = `${fmt(colsWidth(b.cols))} mm breit × ${fmt(b.h)} mm hoch = ${fmt(b.cols * b.h)} spmm · Unterkante bei ${fmt(b.y + b.h)} mm`;
+    }
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // --- Flächen anlegen / bearbeiten ---------------------------------------
+  $('create').onclick = () => {
+    const cols = Number($('n-cols').value);
+    const h = clamp(Number(String($('n-h').value).replace(',', '.')) || 0, 1, PAGE_H);
+    const type = $('n-type').value;
+    const pos = findFree(cols, h, page().blocks, snapStep()) ||
+                findFree(cols, h, page().blocks, 0.5) ||
+                { col: 0, cols, y: 0, h };
+    snapshot();
+    const b = { id: uid(), title: $('n-title').value.trim(), type, cols, h, col: pos.col, y: pos.y, note: '' };
+    page().blocks.push(b);
+    selected = b.id;
+    $('n-title').value = '';
+    commit();
+  };
+
+  function editSelected(fn) {
+    const b = blockById(selected);
+    if (!b) return;
+    snapshot();
+    fn(b);
+    b.cols = clamp(b.cols, 1, COLS);
+    b.col = clamp(b.col, 0, COLS - b.cols);
+    b.h = clamp(b.h, 1, PAGE_H);
+    b.y = clamp(b.y, 0, PAGE_H - b.h);
+    commit();
+  }
+  const num = v => Number(String(v).replace(',', '.'));
+  $('e-title').oninput = e => editSelected(b => b.title = e.target.value);
+  $('e-note').oninput = e => editSelected(b => b.note = e.target.value);
+  $('e-type').onchange = e => editSelected(b => b.type = e.target.value);
+  $('e-cols').onchange = e => editSelected(b => b.cols = Number(e.target.value));
+  $('e-col').onchange = e => editSelected(b => b.col = Number(e.target.value));
+  $('e-y').onchange = e => editSelected(b => b.y = num(e.target.value) || 0);
+  $('e-h').onchange = e => editSelected(b => b.h = num(e.target.value) || 1);
+  $('e-del').onclick = () => deleteSelected();
+  $('e-dup').onclick = () => duplicateSelected();
+
+  function deleteSelected() {
+    if (!selected) return;
+    snapshot();
+    page().blocks = page().blocks.filter(b => b.id !== selected);
+    selected = null;
+    commit();
+  }
+  function duplicateSelected() {
+    const b = blockById(selected);
+    if (!b) return;
+    const pos = findFree(b.cols, b.h, page().blocks, snapStep()) || { col: b.col, y: b.y };
+    snapshot();
+    const c = { ...b, id: uid(), col: pos.col, y: pos.y };
+    page().blocks.push(c);
+    selected = c.id;
+    commit();
+  }
+
+  $('blocklist').onclick = e => {
+    const li = e.target.closest('li[data-id]');
+    if (li) { selected = li.dataset.id; render(); }
+  };
+
+  // --- Seiten --------------------------------------------------------------
+  $('pagelist').onclick = e => {
+    const it = e.target.closest('.page-item');
+    if (!it) return;
+    state.current = Number(it.dataset.i);
+    selected = null;
+    commit();
+  };
+  $('addpage').onclick = () => {
+    snapshot();
+    state.pages.push({ id: uid(), name: 'Seite ' + (state.pages.length + 1), blocks: [] });
+    state.current = state.pages.length - 1;
+    selected = null;
+    commit();
+  };
+  $('duppage').onclick = () => {
+    snapshot();
+    const p = JSON.parse(JSON.stringify(page()));
+    p.id = uid();
+    p.name += ' (Kopie)';
+    p.blocks.forEach(b => b.id = uid());
+    state.pages.splice(state.current + 1, 0, p);
+    state.current++;
+    selected = null;
+    commit();
+  };
+  $('delpage').onclick = () => {
+    if (state.pages.length === 1) { alert('Die letzte Seite kann nicht gelöscht werden.'); return; }
+    if (!confirm(`„${page().name}“ wirklich löschen?`)) return;
+    snapshot();
+    state.pages.splice(state.current, 1);
+    state.current = Math.max(0, state.current - 1);
+    selected = null;
+    commit();
+  };
+  $('pagename').oninput = e => {
+    page().name = e.target.value;
+    save();
+    renderPageList();
+    $('pagename').focus();
+  };
+
+  // --- Ziehen & Größe ändern ----------------------------------------------
+  let drag = null;
+  $('page').addEventListener('pointerdown', e => {
+    const el = e.target.closest('.block');
+    if (!el) {
+      if (selected) { selected = null; render(); }
+      return;
+    }
+    const b = blockById(el.dataset.id);
+    selected = b.id;
+    drag = {
+      b, resize: !!e.target.dataset.handle,
+      x0: e.clientX, y0: e.clientY,
+      start: { col: b.col, y: b.y, cols: b.cols, h: b.h },
+      before: JSON.stringify(state), moved: false,
+    };
+    render();
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = (e.clientX - drag.x0) / scale, dy = (e.clientY - drag.y0) / scale;
+    if (!drag.moved && Math.hypot(dx, dy) * scale < 3) return;
+    drag.moved = true;
+    const { b, start } = drag;
+    const step = snapStep();
+    if (drag.resize) {
+      const w = colsWidth(start.cols) + dx;
+      b.cols = clamp(Math.round((w + GUTTER) / PITCH), 1, COLS - b.col);
+      b.h = clamp(Math.round((start.h + dy) / step) * step, step, PAGE_H - b.y);
+    } else {
+      b.col = clamp(Math.round((colLeft(start.col) + dx) / PITCH), 0, COLS - b.cols);
+      b.y = clamp(Math.round((start.y + dy) / step) * step, 0, PAGE_H - b.h);
+    }
+    renderPage();
+    renderSide();
+  });
+  window.addEventListener('pointerup', () => {
+    if (!drag) return;
+    if (drag.moved) {
+      history.push(drag.before);
+      commit();
+    }
+    drag = null;
+  });
+
+  // --- Tastatur ------------------------------------------------------------
+  document.addEventListener('keydown', e => {
+    const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); undo(); return; }
+    if (typing || !selected) return;
+    const step = snapStep();
+    const moves = {
+      ArrowUp: b => b.y -= step, ArrowDown: b => b.y += step,
+      ArrowLeft: b => b.col -= 1, ArrowRight: b => b.col += 1,
+    };
+    if (moves[e.key]) { e.preventDefault(); editSelected(moves[e.key]); }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); }
+    else if (e.key === 'Escape') { selected = null; render(); }
+  });
+
+  // --- Zoom ----------------------------------------------------------------
+  function fit() {
+    const avail = $('stage').clientHeight - 100;
+    scale = clamp(Math.floor(avail / PAGE_H * 10) / 10, 0.8, 4);
+    $('zoom').value = scale;
+    renderPage();
+  }
+  $('zoom').oninput = e => { scale = Number(e.target.value); renderPage(); };
+  $('fit').onclick = fit;
+  $('undo').onclick = undo;
+
+  // --- Export / Import / Druck --------------------------------------------
+  $('export').onclick = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'seitenplanung-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  $('import').onclick = () => $('importfile').click();
+  $('importfile').onchange = async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const s = JSON.parse(await f.text());
+      if (!Array.isArray(s.pages) || !s.pages.length) throw new Error();
+      snapshot();
+      state = { pages: s.pages, current: 0 };
+      selected = null;
+      commit();
+    } catch (err) {
+      alert('Die Datei konnte nicht gelesen werden.');
+    }
+    e.target.value = '';
+  };
+  $('print').onclick = () => {
+    const prev = scale;
+    selected = null;
+    scale = 260 / PAGE_H * 96 / 25.4; // auf ca. 260 mm Höhe → passt auf A4 hoch
+    renderPage();
+    window.print();
+    scale = prev;
+    render();
+  };
+
+  render();
+  fit();
+})();
+</script>
+</body>
+</html>
